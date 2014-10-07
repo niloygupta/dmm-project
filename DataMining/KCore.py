@@ -14,8 +14,6 @@ pos = []
 vert = []
 n = len(edgeList)
 
-
-
 for key, value in edgeList.iteritems():
     deg[key] = len(value)
     if len(value) > md:
@@ -50,13 +48,9 @@ for d in reversed(range(1,md+1)):
 
 bins[0] = 1
 
-print vert
 for i in range(1,n+1):
     v = vert[i]
-    print "I:",i
-    print "V:",v
     for u in edgeList[v]:
-        print "U:",u
         if deg[u] > deg[v]:
             du = deg[u]
             pu = pos[u]
@@ -70,17 +64,3 @@ for i in range(1,n+1):
             bins[du] = bins[du] + 1
             deg[u] = deg[u] -1 
 print deg   
-
-"""
-sorted_degreeList = deg.copy()
-
-for i in range(len(edgeList)):
-    node = min(sorted_degreeList, key = lambda x: sorted_degreeList.get(x) )
-    core[node] = deg[node];
-    del sorted_degreeList[node]
-    for neighbour in edgeList[node]:
-        if(deg[neighbour] > deg[node]):
-            sorted_degreeList[neighbour] = sorted_degreeList[neighbour] - 1
-            deg[neighbour] = deg[neighbour] - 1
-
-print core"""
