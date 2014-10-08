@@ -85,73 +85,47 @@ def gm_save_tables (dest_dir, belief):
 def gm_k_decomposition(undirected):
     print "Running K-cores!!"
     cur = db_conn.cursor()
+    edgeList = {1:[2,3,4], 2:[1,3,5,7], 3:[2,4,3], 4:[1,2,3,7], 5:[2,7], 6:[2,5], 7:[4]}
+    #edgeList = {1:[2,3,7], 2:[1,3,7], 3:[1,7,2,4,5], 4:[3,5,6], 5:[3,4,6], 6:[4,5], 7:[1,2,3]}
     degreeList = {}
     core = {}
     nodeNum = 0
 
-    cur.execute("SELECT * INTO GM_NODE_DEGREES_KCORE from GM_NODE_DEGREES")
     cur.execute("SELECT * INTO GM_TABLE_UNDIRECTED_KCORE from GM_TABLE_UNDIRECTED")
-    cur.execute("select * into gm_node_kcore from gm_nodes")
-    cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES_KCORE(node_id)")
-    cur.execute("CREATE INDEX GM_NODE_INDEX ON GM_TABLE_UNDIRECTED_KCORE(src_id)")
+    #cur.execute("select * into gm_node_kcore from gm_nodes")
+    cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES(node_id)")
+    cur.execute("CREATE INDEX GM_SRC_INDEX ON GM_TABLE_UNDIRECTED_KCORE(src_id)")
+    cur.execute("CREATE INDEX GM_DST_INDEX ON GM_TABLE_UNDIRECTED_KCORE(dst_id)")
 
     cur.execute("SELECT COUNT(node_id) from gm_nodes")
 
     #rows = cur.fetchall();
     nodeNum = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(IN_DEGREE) FROM GM_NODE_DEGREES WHERE IN_DEGREE <5")
+    cntDeg = cur.fetchone()[0]
+    while cntDeg != 0:
+        cur.execute("delete from gm_table_undirected as ugraph using gm_node_degrees as nd where (nd.node_id=ugraph.src_id OR nd.node_id = ugraph.dst_id) and nd.in_degree<5");
+        gm_node_degrees()
+        cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES(node_id)")
+        cur.execute("SELECT COUNT(IN_DEGREE) FROM GM_NODE_DEGREES WHERE IN_DEGREE <5")
+        cntDeg = cur.fetchone()[0]
 
-    """
-    for key, value in edgeList.iteritems():
-        degreeList[key] = len(value)
 
-
-    sorted_degreeList = degreeList.copy()"""
-
-    for i in range(nodeNum):
-        cur.execute("select node_id, in_degree from gm_node_degrees_kcore where in_degree = (select min(in_degree) from gm_node_degrees_kcore)") 
-        temp = cur.fetchone()
-        node = temp[0]
-        node_degree = temp[1]
-        if node_degree >= 5:
-            break;
-        core[node] = node_degree;
-        cmd = "select dst_id from GM_TABLE_UNDIRECTED_KCORE where src_id = %s" %(node)
-        #print "Command: ", cmd
-        cur.execute(cmd)
-        neighbours = cur.fetchall()
-        for neighbour in neighbours:
-            neighbour = neighbour[0]
-            cur.execute("select in_degree from gm_node_degrees_kcore where node_id = %s" %(neighbour))
-            temp_degree = cur.fetchone()
-            if temp_degree == None:
-                continue
-            neighbour_degree = temp_degree[0]
-            if(neighbour_degree > node_degree):
-                neighbour_degree = neighbour_degree-1
-                cur.execute("update gm_node_degrees_kcore set in_degree=%s" %(neighbour_degree) + ", out_degree=%s" %(neighbour_degree) + " where node_id= %s" %(neighbour))
-                #degreeList[neighbour] = degreeList[neighbour] - 1
-        cur.execute("delete from gm_node_degrees_kcore where node_id = %s" %(node))
-        #cur.execute("select count(*) from GM_TABLE_UNDIRECTED_KCORE")
-        #print cur.fetchall()
-        cur.execute("delete from GM_TABLE_UNDIRECTED_KCORE where src_id = %s" %(node)+ " OR dst_id = %s" %(node))
-        cur.execute("delete from gm_node_kcore where node_id = %s" %(node))
-    #print core
-
-    cur.execute("select count(*) from gm_node_degrees_kcore")
+    cur.execute("select count(*) from gm_node_degrees")
     cnt = cur.fetchone()[0]
-    print "Count: ",cnt
+    print "KCore Count: ",cnt
 
-    cur.execute("select count(*) from GM_TABLE_UNDIRECTED_KCORE")
-    print cur.fetchall()
+    #cur.execute("select count(*) from GM_TABLE_UNDIRECTED")
+    #print cur.fetchall()
+    cur.execute("select node_id into gm_node_kcore from gm_node_degrees")
     db_conn.commit()
-    #cur.execute("select node_id into gm_node_kcore from gm_node_degrees_kcore")
     gm_connected_components(num_nodes=cnt,node_table_name="gm_node_kcore",undirected_table_name="GM_TABLE_UNDIRECTED_KCORE")
     #node_table_name=GM_NODES, undirected_table_name=GM_TABLE_UNDIRECT
     
 
     cur.execute("DROP INDEX DEGREE_INDEX")
-    cur.execute("DROP INDEX GM_NODE_INDEX")
-    cur.execute("DROP TABLE GM_NODE_DEGREES_KCORE")
+    cur.execute("DROP INDEX GM_SRC_INDEX")
+    cur.execute("DROP INDEX GM_DST_INDEX")
     cur.execute("DROP TABLE GM_NODE_KCORE")
     cur.execute("DROP TABLE GM_TABLE_UNDIRECTED_KCORE")
     db_conn.commit()
@@ -211,6 +185,11 @@ def gm_degree_distribution (undirected):
         cur.execute ("INSERT INTO %s" % GM_DEGREE_DISTRIBUTION +
                             " SELECT in_degree+out_degree \"degree\", count(*) FROM %s" % (GM_NODE_DEGREES) +
                             " GROUP BY in_degree+out_degree");
+
+    cur.execute("SELECT * FROM GM_DEGREE_DISTRIBUTION")
+    out = cur.fetchall()
+    for result in out:
+        print "%s\t%s" %(result[0], result[1])
     
     db_conn.commit()                        
     cur.close()
@@ -793,6 +772,7 @@ def gm_belief_propagation(belief_file, delim, undirected, \
         if (diff<=stop_threshold or num_iterations>max_iterations):
             break
         
+    gm_sql_print_table(db_conn, GM_BELIEF)
         
     # Drop temp tables
     gm_sql_table_drop(db_conn, next_table)
@@ -872,6 +852,11 @@ def gm_anomaly_detection():
                         " SELECT src_id \"node_id\", count(*) \"edge_cnt\", sum(weight) \"wgt_sum\" " +
                         " FROM %s GROUP BY src_id) \"TAB\" " % (GM_TABLE_UNDIRECT) +
                         " GROUP BY node_id");
+
+    cur.execute("SELECT * FROM GM_EGONET")
+    out = cur.fetchall()
+    for result in out:
+        print "%s\t%s\t%s" %(result[0], result[1], result[2])
                         
     db_conn.commit();
     print "Time taken = " + str(time.time()-start_time)     
@@ -945,10 +930,10 @@ def main():
         
         gm_node_degrees()
         
+        gm_k_decomposition(args.undirected)                     #K-core decomposition
         # Tasks
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
-        gm_k_decomposition(args.undirected)                     #K-core decomposition
         gm_pagerank(num_nodes)                                  # Pagerank
         gm_connected_components(num_nodes)                      # Connected components
         gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
