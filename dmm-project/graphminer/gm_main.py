@@ -91,7 +91,6 @@ def gm_node_degrees ():
     
     gm_sql_table_drop_create(db_conn, GM_NODE_DEGREES, "node_id integer, \
                              in_degree integer, out_degree integer")
-    
     cur.execute ("INSERT INTO %s" % GM_NODE_DEGREES +
                              " SELECT node_id, SUM(in_degree) \"in_degree\", SUM(out_degree) \"out_degree\" FROM " +
                              " (SELECT dst_id \"node_id\", count(*) \"in_degree\", \
@@ -108,10 +107,13 @@ def gm_node_degrees ():
 
        
 # Degree distribution
-def gm_degree_distribution (undirected):
+def gm_degree_distribution (undirected,index_type='btree'):
     
     cur = db_conn.cursor()
     print "Computing Degree distribution of the nodes..."
+    
+    begin = time.time();
+    cur.execute("CREATE INDEX NODEID_INDEX ON %s USING %s (node_id)" %(GM_NODE_DEGREES,index_type))
     
     gm_sql_table_drop_create(db_conn, GM_DEGREE_DISTRIBUTION, "degree integer, count integer")
     gm_sql_table_drop_create(db_conn, GM_INDEGREE_DISTRIBUTION, "degree integer, count integer")
@@ -133,14 +135,17 @@ def gm_degree_distribution (undirected):
         cur.execute ("INSERT INTO %s" % GM_DEGREE_DISTRIBUTION +
                             " SELECT in_degree+out_degree \"degree\", count(*) FROM %s" % (GM_NODE_DEGREES) +
                             " GROUP BY in_degree+out_degree");
-    
+    cur.execute("DROP INDEX NODEID_INDEX")
+    end = time.time();
+    print "Time taken to compute node degrees for index type %s" %(index_type)
+    print end-begin 
     db_conn.commit()                        
     cur.close()
 
 # Task 2: PageRank
 # ------------------------------------------------------------------------- #
 def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
-                    stop_threshold = gm_param_pr_thres, damping_factor = gm_param_pr_damping):
+                    stop_threshold = gm_param_pr_thres, damping_factor = gm_param_pr_damping,index_type='btree'):
     
     offset_table = "GM_PR_OFFSET"
     next_table = "GM_PR_NEXT"
@@ -149,14 +154,18 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     cur = db_conn.cursor();
     print "Computing PageRanks..."
     
+    begin = time.time()
+    
     gm_sql_table_drop_create(db_conn, norm_table,"src_id integer, dst_id integer, weight double precision")
     
+    cur.execute("CREATE INDEX SRCID_INDEX ON %s USING %s (src_id)" %(GM_TABLE,index_type))
     # Create normalized weighted table
     cur.execute("INSERT INTO %s " % norm_table + 
             " SELECT src_id, dst_id, weight/weight_sm \"weight\" FROM %s \"TAB1\", " % (GM_TABLE) +
             " (SELECT src_id \"node_id\", sum(weight) \"weight_sm\" FROM %s GROUP BY src_id) \"TAB2\" " % (GM_TABLE) + 
             " WHERE \"TAB1\".src_id = \"TAB2\".node_id")    
     db_conn.commit();
+    cur.execute("DROP INDEX SRCID_INDEX")
       
     # Create PageRank Table and initialize to 1/n
     gm_sql_create_and_insert(db_conn, GM_PAGERANK, GM_NODES, \
@@ -168,10 +177,16 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
                              "node_id integer, page_rank double precision default %s" % ((1.0-damping_factor)/num_nodes), \
                              "node_id", "node_id")
     num_iterations = 0
+    
+    cur.execute("CREATE INDEX SRCID_NORM_INDEX ON %s USING %s (src_id)" %(norm_table,index_type))
+    cur.execute("CREATE INDEX DSTID_NORM_INDEX ON %s USING %s (dst_id)" %(norm_table,index_type))
+    cur.execute("CREATE INDEX NODEID_OFFSET_INDEX ON %s USING %s (node_id)" %(offset_table,index_type))
+    
     while True:
         # Create Table to store the next pageRank
         gm_sql_table_drop_create(db_conn, next_table,"node_id integer, page_rank double precision")
-        
+        cur.execute("CREATE INDEX NODEID_NEXT_INDEX ON %s USING %s (node_id)" %(next_table,index_type))
+        cur.execute("CREATE INDEX NODEID_PAGE_INDEX ON %s USING %s (node_id)" %(GM_PAGERANK,index_type))
         # Compute Next PageRank
         cur.execute ("INSERT INTO %s " % next_table + 
                                 " SELECT node_id, SUM(page_rank) FROM (" +
@@ -193,12 +208,23 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
                                     "node_id integer, page_rank double precision", \
                                     "node_id, page_rank", "node_id, page_rank")
 
+        
         num_iterations = num_iterations + 1
         print "Iteration = %d, Error = %f" % (num_iterations, diff)        
         
         if (diff<=stop_threshold or num_iterations>=max_iterations):
             break
-        
+    cur.execute("DROP INDEX IF EXISTS NODEID_OFFSET_INDEX")
+    cur.execute("DROP INDEX IF EXISTS NODEID_NEXT_INDEX")
+    cur.execute("DROP INDEX IF EXISTS SRCID_NORM_INDEX")
+    cur.execute("DROP INDEX IF EXISTS DSTID_NORM_INDEX")
+    
+    end = time.time()
+    print "Time taken for page rank"
+    print end-begin
+    
+     
+    
     # Drop temp tables
     gm_sql_table_drop(db_conn, offset_table)
     gm_sql_table_drop(db_conn, next_table)
@@ -209,8 +235,9 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
 
 #DM Project: K-core decomposition
 #-----------------------------------------------------------------------------#
-def gm_k_decomposition(undirected):
+def gm_k_decomposition(undirected, index_type="btree"):
     print "Running K-cores!!"
+    begin = time.time()
     cur = db_conn.cursor()
     degreeList = {}
     core = {}
@@ -219,9 +246,9 @@ def gm_k_decomposition(undirected):
     cur.execute("DROP TABLE IF EXISTS GM_TABLE_UNDIRECTED_KCORE")
     cur.execute("DROP TABLE IF EXISTS GM_NODE_KCORE")
     cur.execute("SELECT * INTO GM_TABLE_UNDIRECTED_KCORE from GM_TABLE_UNDIRECTED")
-    cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES(node_id)")
-    cur.execute("CREATE INDEX GM_SRC_INDEX ON GM_TABLE_UNDIRECTED_KCORE(src_id)")
-    cur.execute("CREATE INDEX GM_DST_INDEX ON GM_TABLE_UNDIRECTED_KCORE(dst_id)")
+    cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES USING %s (node_id)" % (index_type))
+    cur.execute("CREATE INDEX GM_SRC_INDEX ON GM_TABLE_UNDIRECTED_KCORE USING %s (src_id)" % (index_type))
+    cur.execute("CREATE INDEX GM_DST_INDEX ON GM_TABLE_UNDIRECTED_KCORE USING %s (dst_id)" % (index_type))
 
     cur.execute("SELECT COUNT(node_id) from gm_nodes")
     cur.execute("SELECT COUNT(IN_DEGREE) FROM GM_NODE_DEGREES WHERE IN_DEGREE <5")
@@ -229,7 +256,7 @@ def gm_k_decomposition(undirected):
     while cntDeg != 0:
         cur.execute("delete from gm_table_undirected as ugraph using gm_node_degrees as nd where (nd.node_id=ugraph.src_id OR nd.node_id = ugraph.dst_id) and nd.in_degree<5");
         gm_node_degrees()
-        cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES(node_id)")
+        cur.execute("CREATE INDEX DEGREE_INDEX ON GM_NODE_DEGREES USING %s (node_id)" % (index_type))
         cur.execute("SELECT COUNT(IN_DEGREE) FROM GM_NODE_DEGREES WHERE IN_DEGREE <5")
         cntDeg = cur.fetchone()[0]
 
@@ -251,6 +278,9 @@ def gm_k_decomposition(undirected):
     cur.execute("DROP TABLE GM_TABLE_UNDIRECTED_KCORE")
     db_conn.commit()
     cur.close()
+    end = time.time()
+    print "Time Taken for index Type %s" %(index_type)
+    print (end-begin)
 
 # Task 3: Weakly Connected Components
 #-------------------------------------------------------------#
@@ -876,9 +906,10 @@ def main():
                          (<node_id>, <belief>). Specify a different delimiter with --delim option.\
                          The prior beliefs are expected to be centered around 0. i.e. positive \
                          nodes have priors >0, negative nodes <0 and unknown nodes 0. ')
+    parser.add_argument ('--index_type', dest='index_type', type=str, required=True,
+                         help='SQL index type')
                          
     args = parser.parse_args()
-    
     try:
         # Run the various graph algorithm below
         db_conn = gm_db_initialize()
@@ -906,11 +937,11 @@ def main():
         gm_node_degrees()
         
         # Tasks
-        gm_degree_distribution(args.undirected)                 # Degree distribution
+        gm_degree_distribution(args.undirected,args.index_type)                 # Degree distribution
         
         gm_pagerank(num_nodes)                                  # Pagerank
         gm_connected_components(num_nodes)                      # Connected components
-        gm_k_decomposition(args.undirected)
+        gm_k_decomposition(args.undirected,args.index_type)
         gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
         gm_all_radius(num_nodes)     
         if (args.belief_file):
