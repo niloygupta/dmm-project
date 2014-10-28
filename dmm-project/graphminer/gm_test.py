@@ -1,4 +1,3 @@
-from gm_main import *
 import unittest
 import argparse
 from gm_params import *
@@ -6,6 +5,7 @@ from gm_sql import *
 from math import sqrt
 import os
 import time
+from gm_main import *
 
 class TestGM_Main(unittest.TestCase):
     
@@ -40,16 +40,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,6)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,6)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,2)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
         
     def testKCore2(self):
@@ -86,17 +87,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_conn)
         self.assertEqual(num_components,24)
         print 'Testing KCore'
-        print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,3513)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,3513)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,3603)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
 
     def testKCore3(self):
@@ -129,16 +130,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,0)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,0)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,1)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
     
     def testKCore4(self):
@@ -171,16 +173,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,0)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,0)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,1)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
         
     def testKCore5(self):
@@ -213,16 +216,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,0)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,0)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,1)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
         
     def testKCore6(self):
@@ -255,16 +259,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,0)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,0)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,1)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
         
     def testKCore7(self):
@@ -297,16 +302,17 @@ class TestGM_Main(unittest.TestCase):
         gm_db_bubye(db_test_conn)
         self.assertEqual(num_components,1)
         print 'Testing KCore'
-        indexList = [ 'btree', 'hash']
-        for index in indexList:
-            gm_k_decomposition(0,index)
-            db_test_conn = gm_db_initialize()
-            cur = db_test_conn.cursor()
-            cur.execute("select count(*) from gm_node_degrees")
-            cnt = cur.fetchone()[0]
-            self.assertEqual(cnt,0)
-            cur.close()
-            gm_db_bubye(db_test_conn)
+        gm_k_decomposition(0)
+        db_test_conn = gm_db_initialize()
+        cur = db_test_conn.cursor()
+        cur.execute("select count(*) from gm_node_degrees")
+        cnt = cur.fetchone()[0]
+        self.assertEqual(cnt,0)
+        cur.execute ("SELECT count(distinct component_id) FROM %s" % GM_CON_COMP)
+        num_components = cur.fetchone()[0]
+        self.assertEqual(num_components,1)
+        cur.close()
+        gm_db_bubye(db_test_conn)
         destroy_conn()
 
 if __name__ == '__main__':
