@@ -88,15 +88,18 @@ def gm_sql_save_table_to_file(db_conn, table_name, col_fmt, file_name, delim):
     print "Saved table %s to %s" % (table_name, file_name)
     
 # Compute L2 norm of difference of two vectors
-def gm_sql_vect_diff (db_conn, table1, table2, key1, key2, val1, val2):
+def gm_sql_vect_diff (db_conn, table1, table2, key1, key2, val1, val2,index_type="btree"):
     cur = db_conn.cursor();
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+table1+" USING "+str(index_type)+" (%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+table2+" USING "+str(index_type)+" (%s)" %(key2))
     cur.execute("SELECT sqrt(sum((\"TAB1\".%s - \"TAB2\".%s)^2)) " %(val1,val2) +
                     " FROM %s \"TAB1\", %s \"TAB2\" " % (table1, table2) +
                     " WHERE \"TAB1\".%s = \"TAB2\".%s " % (key1, key2));
     
                     
-    val = cur.fetchone()    
+    val = cur.fetchone()  
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2")   
     cur.close()
     
     return val[0]
@@ -134,9 +137,10 @@ def gm_sql_normalize_vector (db_conn, vector, val, whr = ""):
     return vlen
 
 # Compute vector dot product
-def gm_sql_vect_dotproduct (db_conn, vect1, vect2, key1, key2, val1, val2, whr1="", whr2=""):
+def gm_sql_vect_dotproduct (db_conn, vect1, vect2, key1, key2, val1, val2, whr1="", whr2="",index_type="btree"):
     cur = db_conn.cursor()
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+vect1+" USING "+str(index_type)+" (%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+vect2+" USING "+str(index_type)+" (%s)" %(key2))
     stmt = "SELECT sum(\"TAB1\".%s * \"TAB2\".%s) " % (val1,val2) + \
                     " FROM %s \"TAB1\", %s \"TAB2\" " % (vect1, vect2) + \
                     " WHERE \"TAB1\".%s = \"TAB2\".%s " % (key1, key2)
@@ -146,9 +150,10 @@ def gm_sql_vect_dotproduct (db_conn, vect1, vect2, key1, key2, val1, val2, whr1=
     if whr2:
         stmt += "AND \"TAB2\".%s " % (whr2)
         
-    cur.execute(stmt)
-                        
+    cur.execute(stmt)          
     val = cur.fetchone()[0]
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2")
     cur.close()
     
     return val
@@ -165,15 +170,17 @@ def gm_sql_vector_random (db_conn, vector):
 
 
     
-def gm_sql_adj_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_key, val1, dest_val, gby):
+def gm_sql_adj_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_key, val1, dest_val, gby,index_type="btree"):
     cur = db_conn.cursor();
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+str(mat)+" USING "+str(index_type)+"(%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+str(vect)+" USING "+str(index_type)+"(%s)" %(key2))
     cur.execute("INSERT INTO %s " % (dest_vect) +
                     "(SELECT \"MAT\".%s \"%s\", sum(\"VECT\".%s) \"%s\"" % (gby, dest_key, val1, dest_val) +
                     " FROM %s \"MAT\", %s \"VECT\"" % (mat, vect) +
                     " WHERE \"MAT\".%s = \"VECT\".%s " % (key1, key2) +
                     " GROUP BY %s)" % (gby))
-    
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2")
                     
     db_conn.commit()
     cur.close()
@@ -181,44 +188,50 @@ def gm_sql_adj_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_ke
  
     
 def gm_sql_mat_mat_multiply (db_conn, mat1, mat2, dest_mat, key1, key2, val1, val2, 
-                                             dest_val, gby1, gby2, d_gby1, d_gby2):
+                                             dest_val, gby1, gby2, d_gby1, d_gby2,index_type="btree"):
     cur = db_conn.cursor();
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+mat1+" USING "+str(index_type)+" (%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+mat2+" USING "+str(index_type)+" (%s)" %(key2))
     cur.execute("INSERT INTO %s " % (dest_mat) +
                     "(SELECT \"MAT1\".%s \"%s\", \"MAT2\".%s \"%s\", " % (gby1, d_gby1, gby2, d_gby2) +
                     " sum(\"MAT1\".%s * \"MAT2\".%s) \"%s\"" % (val1, val2, dest_val) +
                     " FROM %s \"MAT1\", %s \"MAT2\"" % (mat1, mat2) +
                     " WHERE \"MAT1\".%s = \"MAT2\".%s " % (key1, key2) +
                     " GROUP BY \"MAT1\".%s, \"MAT2\".%s)" % (gby1, gby2))
-    
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2")
                     
     db_conn.commit()
     cur.close()
     
 def gm_sql_mat_colvec_multiply (db_conn, mat1, mat2, dest_vect, key1, key2, 
-                                dest_key, val1, val2, dest_val, gby, whr):
+                                dest_key, val1, val2, dest_val, gby, whr,index_type="btree"):
     cur = db_conn.cursor();
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+mat1+" USING "+str(index_type)+" (%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+mat2+" USING "+str(index_type)+" (%s)" %(key2))
     cur.execute("INSERT INTO %s " % (dest_vect) +
                     "(SELECT \"MAT\".%s \"%s\", " % (gby, dest_key) +
                     " sum(\"MAT\".%s * \"VEC\".%s) \"%s\"" % (val1, "value", dest_val) +
                     " FROM %s \"MAT\", (SELECT %s \"id\", %s \"value\" FROM  %s WHERE %s) \"VEC\"" % (mat1, key2, val2, mat2, whr) +
                     " WHERE \"MAT\".%s = \"VEC\".%s " % (key1, "id") +
                     " GROUP BY \"MAT\".%s)" % (gby))
-    
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2") 
                     
     db_conn.commit()
     cur.close()
    
-def gm_sql_mat_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_key, val1, val2, dest_val, gby):
+def gm_sql_mat_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_key, val1, val2, dest_val, gby,index_type="btree"):
     cur = db_conn.cursor();
-    
+    cur.execute("CREATE INDEX INDEX1 ON "+mat+" USING "+str(index_type)+" (%s)" %(key1))
+    cur.execute("CREATE INDEX INDEX2 ON "+vect+" USING "+str(index_type)+" (%s)" %(key2))    
     cur.execute("INSERT INTO %s " % (dest_vect) +
                     "(SELECT \"MAT\".%s \"%s\", sum(\"MAT\".%s * \"VECT\".%s) \"%s\"" % (gby, dest_key, val1, val2, dest_val) +
                     " FROM %s \"MAT\", %s \"VECT\"" % (mat, vect) +
                     " WHERE \"MAT\".%s = \"VECT\".%s " % (key1, key2) +
                     " GROUP BY %s)" % (gby))
-    
+    cur.execute("DROP INDEX IF EXISTS INDEX1")
+    cur.execute("DROP INDEX IF EXISTS INDEX2")     
                     
     db_conn.commit()
     cur.close()

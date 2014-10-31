@@ -201,7 +201,7 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
         db_conn.commit()
         
         diff = gm_sql_vect_diff(db_conn, GM_PAGERANK, next_table, \
-                                "node_id", "node_id", "page_rank", "page_rank")
+                                "node_id", "node_id", "page_rank", "page_rank",index_type)
                 
         # Copy the new page rank to the page rank table
         gm_sql_create_and_insert(db_conn, GM_PAGERANK, next_table, \
@@ -279,16 +279,16 @@ def gm_k_decomposition(undirected, index_type="btree"):
     db_conn.commit()
     cur.close()
     end = time.time()
-    print "Time Taken for index Type %s" %(index_type)
+    print "Time Taken for K-Decomposition using index Type %s" %(index_type)
     print (end-begin)
 
 # Task 3: Weakly Connected Components
 #-------------------------------------------------------------#
-def gm_connected_components (num_nodes, node_table_name=GM_NODES, undirected_table_name=GM_TABLE_UNDIRECT):
+def gm_connected_components (num_nodes, node_table_name=GM_NODES, undirected_table_name=GM_TABLE_UNDIRECT,index_type="btree"):
     temp_table = "GM_CC_TEMP"
     cur = db_conn.cursor()
     print 'Computing Weakly Connected Components...'
-
+    begin = time.time()
     # Create CC table and initialize component id to node id
     gm_sql_create_and_insert(db_conn, GM_CON_COMP, GM_NODES, \
                              "node_id integer, component_id integer", \
@@ -298,6 +298,7 @@ def gm_connected_components (num_nodes, node_table_name=GM_NODES, undirected_tab
         gm_sql_table_drop_create(db_conn, temp_table,"node_id integer, component_id integer")
         
         # Set component id as the min{component ids of neighbours, node's componet id}
+        cur.execute("CREATE INDEX NODEID_INDEX ON GM_CON_COMP USING %s (node_id)" % (index_type))
         cur.execute("INSERT INTO %s " % temp_table + 
                             " SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
                                 " SELECT src_id \"node_id\", MIN(component_id) \"component_id\" FROM %s, %s" % (GM_TABLE_UNDIRECT,GM_CON_COMP) + 
@@ -305,9 +306,10 @@ def gm_connected_components (num_nodes, node_table_name=GM_NODES, undirected_tab
                                 " UNION" +
                                 " SELECT * FROM %s" %  GM_CON_COMP +
                             " ) \"T\" GROUP BY node_id")
+        
         db_conn.commit()
         
-        diff = gm_sql_vect_diff(db_conn, GM_CON_COMP, temp_table, "node_id", "node_id", "component_id", "component_id")
+        diff = gm_sql_vect_diff(db_conn, GM_CON_COMP, temp_table, "node_id", "node_id", "component_id", "component_id",index_type)
         
         # Copy the new component ids to the component id table
         gm_sql_create_and_insert(db_conn, GM_CON_COMP, temp_table, \
@@ -328,14 +330,17 @@ def gm_connected_components (num_nodes, node_table_name=GM_NODES, undirected_tab
     
     # Drop temp tables
     gm_sql_table_drop(db_conn, temp_table)
+    end = time.time()
+    print "Time Taken for gm Connected Components using index Type %s" %(index_type)
+    print (end-begin)
     
 # Task 4: Radius of every node
 #-------------------------------------------------------------#
-def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
+def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter,index_type="btree"):
     
     hop_table = "GM_RD_HOP"
     max_hop_ngh = "GM_RD_MAX_HOP_NGH"
-    
+    begin = time.time()
     cur = db_conn.cursor()
     print 'Computing radius of every node...'    
     
@@ -343,14 +348,15 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
     gm_sql_create_and_insert(db_conn, hop_table+"0", GM_NODES, \
                              "node_id integer, hash integer", \
                              "node_id, hash", "node_id, (((node_id%%%s+1)#(node_id%%%s))+1)/2" % (num_nodes, num_nodes))
-                               
+    cur.execute("CREATE INDEX SRCID_INDEX ON GM_TABLE_UNDIRECTED USING %s (src_id)" % (index_type))
+    cur.execute("CREATE INDEX DSTID_INDEX ON GM_TABLE_UNDIRECTED USING %s (dst_id)" % (index_type))
     for cur_hop in range(1,max_iter+1):
         print "Hop number : " + str(cur_hop)
-        
         # create ith hop table
         cur_hop_table = hop_table+str(cur_hop)
         prev_hop_table = hop_table+str(cur_hop-1)
         gm_sql_table_drop_create(db_conn, cur_hop_table,"node_id integer, hash integer")
+        cur.execute("CREATE INDEX HOP" +str(cur_hop)+" ON "+cur_hop_table+" USING "+str(index_type)+" (node_id)")
         cur.execute("INSERT INTO %s " % cur_hop_table +
                             " SELECT node_id, bit_or(hash) FROM ( " +
                             " SELECT src_id \"node_id\", bit_or(hash) \"hash\" " +
@@ -393,20 +399,25 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
     cur.execute ("SELECT max(radius) FROM %s" % GM_RADIUS)
     max_radius = cur.fetchone()[0]   
     print "Maximum effective radius =", max_radius
+    cur.execute("DROP INDEX IF EXISTS SRCID_INDEX")
+    cur.execute("DROP INDEX IF EXISTS DSTID_INDEX")
     
     # drop temp tables
     gm_sql_table_drop(db_conn, max_hop_ngh)
     for i in range(0,cur_hop+1):
         gm_sql_table_drop(db_conn, hop_table+str(i))
+        cur.execute("DROP INDEX IF EXISTS HOP"+str(i))
     
-
+    end = time.time()
+    print "Time Taken for GM All Radius using index Type %s" %(index_type)
+    print (end-begin)
     cur.close()
     
 # Task 5: Eigen values
 # ------------------------------------------------------------------------- #
 # The adjacency matrix should be symmetric
 
-def gm_eigen_QR_decompose(T, n, Q, R):
+def gm_eigen_QR_decompose(T, n, Q, R,index_type="btree"):
     G = "GM_QR_DECOMPOSE_GIVENS"
     temp_table = "GM_QR_DECOMPOSE_TEMP"
     I = "GM_QR_DECOMPOSE_IDENTITY"
@@ -447,7 +458,7 @@ def gm_eigen_QR_decompose(T, n, Q, R):
         else:
             gm_sql_table_drop_create(db_conn, temp_table,"row_id integer, col_id integer, value double precision")
             gm_sql_mat_mat_multiply (db_conn, Q, G, temp_table, "col_id", "col_id", "value", "value", 
-                                             "value", "row_id", "row_id", "row_id", "row_id")
+                                             "value", "row_id", "row_id", "row_id", "row_id",index_type)
             gm_sql_table_drop_create(db_conn, Q,"row_id integer, col_id integer, value double precision")
             cur.execute("INSERT INTO %s" % (Q) + " SELECT * FROM %s" % (temp_table))
 
@@ -455,7 +466,7 @@ def gm_eigen_QR_decompose(T, n, Q, R):
         # Compute R
         gm_sql_table_drop_create(db_conn, temp_table,"row_id integer, col_id integer, value double precision")
         gm_sql_mat_mat_multiply (db_conn, G, R, temp_table, "col_id", "row_id", "value", "value", 
-                                             "value", "row_id", "col_id", "row_id", "col_id")
+                                             "value", "row_id", "col_id", "row_id", "col_id",index_type)
         gm_sql_table_drop_create(db_conn, R,"row_id integer, col_id integer, value double precision")
         cur.execute("INSERT INTO %s" % (R) + " SELECT * FROM %s" % (temp_table))
         
@@ -469,7 +480,7 @@ def gm_eigen_QR_decompose(T, n, Q, R):
 
 
 
-def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err):
+def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err,index_type="btree"):
    
     Q = "GM_QR_Q"
     R = "GM_QR_R"
@@ -491,7 +502,7 @@ def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err):
     for i in range(1,steps+1):
 
         try:
-            gm_eigen_QR_decompose(EVal, n, Q, R)
+            gm_eigen_QR_decompose(EVal, n, Q, R,index_type)
         except psycopg2.DataError:
             db_conn.commit()
             break
@@ -500,7 +511,7 @@ def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err):
 
         # Set EVal as RQ
         gm_sql_mat_mat_multiply (db_conn, R, Q, EVal, "col_id", "row_id", "value", "value", 
-                                             "value", "row_id", "col_id", "row_id", "col_id")
+                                             "value", "row_id", "col_id", "row_id", "col_id",index_type)
 
         if i==1:
             # Copy Q to EVec
@@ -510,7 +521,7 @@ def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err):
             # Set EVec = EVec * Q
             gm_sql_table_drop_create(db_conn, temp_table,"row_id integer, col_id integer, value double precision")
             gm_sql_mat_mat_multiply (db_conn, EVec, Q, temp_table, "col_id", "row_id", "value", "value", 
-                                             "value", "row_id", "col_id", "row_id", "col_id")
+                                             "value", "row_id", "col_id", "row_id", "col_id",index_type)
             
             gm_sql_table_drop_create(db_conn, EVec,"row_id integer, col_id integer, value double precision")
             cur.execute("INSERT INTO %s" % (EVec) + " SELECT * FROM %s" % (temp_table))
@@ -533,7 +544,7 @@ def gm_eigen_QR_iterate(T, n, EVal, EVec, steps, err):
     
     
     
-def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
+def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT,index_type="btree"):
     
     QR_max_iter = gm_param_qr_max_iter
     QR_stop_threshold = gm_param_qr_thres
@@ -551,7 +562,7 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
     
     cur = db_conn.cursor();
     print "Computing Eigenvalues..."
-    
+    begin = time.time()
     # create basis vectors
     gm_sql_vector_random(db_conn, basis_vect_1)    
     gm_sql_create_and_insert(db_conn, basis_vect_0, GM_NODES, \
@@ -572,10 +583,10 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
 
         # Get the next basis
         gm_sql_table_drop_create(db_conn, next_basis_vect,"id integer, value double precision")
+        
         gm_sql_adj_vect_multiply(db_conn, adj_table, basis_vect_1, next_basis_vect, "dst_id", 
-                                    "id", "id", "value", "value", "src_id")
-                                    
-        alph_1 = gm_sql_vect_dotproduct (db_conn, next_basis_vect, basis_vect_1, "id", "id", "value", "value")
+                                    "id", "id", "value", "value", "src_id",index_type)                            
+        alph_1 = gm_sql_vect_dotproduct (db_conn, next_basis_vect, basis_vect_1, "id", "id", "value", "value","","",index_type)
         
         gm_sql_table_drop_create(db_conn, temp_vect,"id integer, value double precision")
         # Orthogonalize with previous two basis vectors
@@ -605,7 +616,7 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
         db_conn.commit()  
         
         if i>1:
-            gm_eigen_QR_iterate(tridiag_table, i, diag_table, eigvec_table, QR_max_iter, QR_stop_threshold)
+            gm_eigen_QR_iterate(tridiag_table, i, diag_table, eigvec_table, QR_max_iter, QR_stop_threshold,index_type)
 
             for j in range(1,i+1):
                 cur.execute("SELECT abs(value) FROM %s" % (eigvec_table) + 
@@ -623,10 +634,10 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
                     gm_sql_table_drop_create(db_conn, temp_vect2,"id integer, value double precision")
     
                     gm_sql_mat_colvec_multiply (db_conn, basis, eigvec_table, temp_vect2, "col_id", "row_id", 
-                                    "id", "value", "value", "value", "row_id", "col_id="+str(j))
-    
+                                    "id", "value", "value", "value", "row_id", "col_id="+str(j),index_type)
                     # Selectively orthogonalize
-                    r = gm_sql_vect_dotproduct (db_conn, temp_vect2, temp_vect, "id", "id", "value", "value")
+                    
+                    r = gm_sql_vect_dotproduct (db_conn, temp_vect2, temp_vect, "id", "id", "value", "value","","",index_type)
     
                     gm_sql_table_drop_create(db_conn, temp_vect3,"id integer, value double precision")
                     cur.execute("INSERT INTO %s " % (temp_vect3) +
@@ -660,7 +671,7 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
         beta_0 = beta_1
         
     # Get the eigen values and eigen vectors
-    gm_eigen_QR_iterate(tridiag_table, i, diag_table, eigvec_table, QR_max_iter, QR_stop_threshold)
+    gm_eigen_QR_iterate(tridiag_table, i, diag_table, eigvec_table, QR_max_iter, QR_stop_threshold,index_type)
     
     gm_sql_table_drop_create(db_conn, GM_EIG_VALUES,"id integer, value double precision")
     
@@ -683,7 +694,7 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
         print "Getting eigenvector %s" % i
         gm_sql_table_drop_create(db_conn, temp_vect2,"id integer, value double precision")
         gm_sql_mat_colvec_multiply (db_conn, basis, eigvec_table, temp_vect2, "col_id", "row_id", 
-                                "id", "value", "value", "value", "row_id", "col_id="+str(i))
+                                "id", "value", "value", "value", "row_id", "col_id="+str(i),index_type)
                                 
         cur2.execute("INSERT INTO %s SELECT id \"row_id\", %s \"col_id\", value" % (GM_EIG_VECTORS,i) +
                                 " FROM %s" % (temp_vect2))
@@ -711,16 +722,20 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
     gm_sql_table_drop(db_conn, tridiag_table)
     gm_sql_table_drop(db_conn, diag_table)
     gm_sql_table_drop(db_conn, eigvec_table)
+    end = time.time()
+    print "Time Taken for GM EIGEN using index Type %s" %(index_type)
+    print (end-begin)
+    cur.close()
   
 
 # Task 6: Fast Belief Propagation
 # ------------------------------------------------------------------------- #
 def gm_belief_propagation(belief_file, delim, undirected, \
-                max_iterations = gm_param_bp_max_iter, stop_threshold = gm_param_bp_thres):
+                max_iterations = gm_param_bp_max_iter, stop_threshold = gm_param_bp_thres,index_type="btree"):
 
     next_table = "GM_BP_NEXT"
     print "Computing belief propagation..."
-
+    begin = time.time()
     # BP require that the graph is undirected. 
     if (undirected):
         degree_col = "out_degree"
@@ -772,7 +787,11 @@ def gm_belief_propagation(belief_file, delim, undirected, \
                                 
         db_conn.commit()
         
-        diff = gm_sql_vect_diff(db_conn, GM_BELIEF, next_table, "node_id", "node_id", "belief", "belief")
+        cur.execute("CREATE INDEX BELIEF_NODE_INDEX ON GM_BELIEF USING %s (node_id)" % (index_type))
+        cur.execute("CREATE INDEX NODE_ID_INDEX ON "+next_table+" USING %s (node_id)" % (index_type))
+        diff = gm_sql_vect_diff(db_conn, GM_BELIEF, next_table, "node_id", "node_id", "belief", "belief",index_type)
+        cur.execute("DROP INDEX IF EXISTS BELIEF_NODE_INDEX")
+        cur.execute("DROP INDEX IF EXISTS NODE_ID_INDEX")
         
         # Recreate Belief table and copy values
         gm_sql_create_and_insert(db_conn, GM_BELIEF, next_table, \
@@ -788,14 +807,16 @@ def gm_belief_propagation(belief_file, delim, undirected, \
         
     # Drop temp tables
     gm_sql_table_drop(db_conn, next_table)
-
+    end = time.time()
+    print "Time Taken for GM Belief Propogation using index Type %s" %(index_type)
+    print (end-begin)
     cur.close()
 
 
   
 # Task 7: Triangle counting
 # ------------------------------------------------------------------------- #
-def gm_naive_triangle_count(adj_table=GM_TABLE_UNDIRECT):
+def gm_naive_triangle_count(adj_table=GM_TABLE_UNDIRECT,index_type="btree"):
 
     temp_table = "GM_TRIANG_TEMP"
     temp_table2 = "GM_TRIANG_TEMP2"
@@ -814,10 +835,10 @@ def gm_naive_triangle_count(adj_table=GM_TABLE_UNDIRECT):
     
     # Compute A^2
     gm_sql_mat_mat_multiply (db_conn, temp_table, temp_table, temp_table2, "col_id", "row_id", "value", "value", 
-                                             "value", "row_id", "col_id", "row_id", "col_id")
+                                             "value", "row_id", "col_id", "row_id", "col_id",index_type)
     # Compute A^3
     gm_sql_mat_mat_multiply (db_conn, temp_table2, temp_table, temp_table3, "col_id", "row_id", "value", "value", 
-                                             "value", "row_id", "col_id", "row_id", "col_id")
+                                             "value", "row_id", "col_id", "row_id", "col_id",index_type)
     
     
     cnt = gm_sql_mat_trace(db_conn, temp_table3, "row_id", "col_id", "value")
@@ -940,17 +961,16 @@ def main():
         gm_degree_distribution(args.undirected,args.index_type)                 # Degree distribution
         
         gm_pagerank(num_nodes)                                  # Pagerank
-        gm_connected_components(num_nodes)                      # Connected components
-        gm_k_decomposition(args.undirected,args.index_type)
-        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
-        gm_all_radius(num_nodes)     
+        gm_connected_components(num_nodes,args.index_type)                      # Connected components
+        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2,GM_TABLE_UNDIRECT,args.index_type)    
+        gm_all_radius(num_nodes,gm_param_radius_max_iter,args.index_type)     
         if (args.belief_file):
-            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected)
+            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected,gm_param_bp_max_iter,gm_param_bp_thres,args.index_type)
         
         
         gm_eigen_triangle_count()
         #gm_naive_triangle_count()
-
+        gm_k_decomposition(args.undirected,args.index_type)
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
         #gm_anomaly_detection()

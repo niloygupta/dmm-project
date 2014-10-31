@@ -1,6 +1,7 @@
 all:    
 	#chmod a+rwx `pwd`
-	python gm_main.py --file `pwd`/bigData.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected
+	python gm_main.py --file `pwd`/bigData.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected --index_type btree
+	python gm_main.py --file `pwd`/bigData.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected --index_type hash
 
 install:
 	sudo apt-get install python-psycopg2
