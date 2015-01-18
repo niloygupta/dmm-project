@@ -1,4 +1,13 @@
 Graph Miner
+
+The existing graphminer package has various advance graph mining algorithms
+implemented in SQL. the objective of this project is to extend the graphminer package
+to implement the K-Core algorithm, incorporate unit test and improved SQL indexing
+methods.
+This is followed by using the algorithms to analyse large graph datasets and
+derive meaningful information from them.
+
+The analysis is discussed in the report niloyg-svadlapu-report.pdf
 ============
 usage: gm_main.py [-h] --file INPUT_FILE [--delim DELIMITER] [--unweighted]
                   [--undirected] --dest_dir DEST_DIR

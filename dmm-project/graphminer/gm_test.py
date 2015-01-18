@@ -20,7 +20,6 @@ class TestGM_Main(unittest.TestCase):
         gm_degree_distribution(1)
         cur.execute ("SELECT * FROM %s" % GM_DEGREE_DISTRIBUTION);
         rows = cur.fetchall()
-        print "\nShow me the degree distribution:\n"
         degreeDistListTest = {1:1,5:5,6:1}
         degreeDistCheck = True
         i = 0

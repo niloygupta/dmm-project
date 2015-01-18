@@ -231,7 +231,95 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     gm_sql_table_drop(db_conn, norm_table)
     
     cur.close()
+#DM Project: Tensor Decomposition
+#-----------------------------------------------------------------------------#
+def gm_tensor_decomposition_R1():
+    print "Running Rank 1 Tensor Decomposition!!"
+    begin = time.time()
+    cur = db_conn.cursor()
+    degreeList = {}
+    core = {}
+    nodeNum = 0
+
+    cur.execute("COPY tensor FROM 'box.dat' (DELIMITER E'\t')")
+    cur.execute(" select count(distinct(src_ip)) from tensor")
+    N = cur.fetchone()[0]
+    cur.execute(" select count(distinct(dst_ip)) from tensor")
+    M = cur.fetchone()[0]
+    cur.execute(" select count(distinct(port_num)) from tensor")
+    K = cur.fetchone()[0]
+    cur.execute("SELECT random() as val into A FROM generate_series(1,%s)" %(N))
+    cur.execute("SELECT random() as val into B FROM generate_series(1,%s)" %(M))
+    cur.execute("SELECT random() as val into C FROM generate_series(1,%s)" %(K))
+    """
+    cur.execute("select t.src_ip as sip,t.val*b.random*c.random as VAL into tempA from tensor t,B b, C c")
+    cur.execute("select sip, sum(val) as val into A from tempA group by sip")
     
+    cur.execute("DROP TABLE IF EXISTS B")
+    cur.execute("select t.dst_ip as DIP,t.val*a.random*c.random as VAL into tempB from tensor t,A a, C c")
+    cur.execute("select dip, sum(val) as val into B from tempB group by dip")
+
+    cur.execute("DROP TABLE IF EXISTS C")
+    cur.execute("select t.port_num as port_num,t.val*b.random*a.random as VAL into tempC from tensor t,B b, A a")
+    cur.execute("select port_num, sum(val) as val into C from tempC group by port_num")
+
+    
+    cur.execute("DROP TABLE IF EXISTS tempA")
+    cur.execute("DROP TABLE IF EXISTS tempB")
+    cur.execute("DROP TABLE IF EXISTS tempB")"""
+    
+    convergence = 0
+    
+    while(convergence==0):
+        #cur.execute("DROP TABLE IF EXISTS A")
+        cur.execute("select t.src_ip as sip,t.val*b.val*c.val as VAL into tempA from tensor t,B b, C c")
+        cur.execute("select sip, sum(val) as val into A2 from tempA group by sip")
+        
+        #cur.execute("DROP TABLE IF EXISTS A")
+        cur.execute("select t.dst_ip as DIP,t.val*a.val*c.val as VAL into tempB from tensor t,A a, C c")
+        cur.execute("select dip, sum(val) as val into B2 from tempB group by dip")
+        
+        #cur.execute("DROP TABLE IF EXISTS A")
+        cur.execute("select t.port_num as port_num,t.val*b.val*a.val as VAL into tempC from tensor t,B b, A a")
+        cur.execute("select port_num, sum(val) as val into C2 from tempC group by port_num")
+        
+        cur.execute("select max(val) from A2")
+        maxSIP = cur.fetchone()[0]
+        cur.execute("update A2 set val = val/%s" %(maxSIP))
+        
+        cur.execute("select max(val) from B2")
+        maxDIP = cur.fetchone()[0]
+        cur.execute("update B2 set val = val/%s" %(maxDIP))
+        
+        cur.execute("select max(val) from C2")
+        maxPortNum = cur.fetchone()[0]
+        cur.execute("update C2 set val = val/%s" %(maxPortNum))
+        
+        cur.execute("SELECT sqrt(sum((A.val - A2.val)^2)) from A, A2 where A.sip = A2.sip")
+        diffA = cur.fetchone()[0]
+        cur.execute("SELECT sqrt(sum((B.val - B2.val)^2)) from B, B2 where B.sip = B2.sip")
+        diffB = cur.fetchone()[0]
+        cur.execute("SELECT sqrt(sum((C.val - C2.val)^2)) from A, C2 where C.sip = C2.sip")
+        diffC = cur.fetchone()[0]
+        
+        if(diffA==0 and diffB==0 and diffC==0):
+            break;
+        
+        cur.execute("DROP TABLE IF EXISTS A")
+        cur.execute("DROP TABLE IF EXISTS B")
+        cur.execute("DROP TABLE IF EXISTS C")
+        
+        cur.execute("SELECT * INTO A FROM A2")
+        cur.execute("SELECT * INTO B FROM B2")
+        cur.execute("SELECT * INTO C FROM C2")
+        
+        cur.execute("DROP TABLE IF EXISTS tempA")
+        cur.execute("DROP TABLE IF EXISTS tempB")
+        cur.execute("DROP TABLE IF EXISTS tempC")
+        cur.execute("DROP TABLE IF EXISTS A2")
+        cur.execute("DROP TABLE IF EXISTS B2")
+        cur.execute("DROP TABLE IF EXISTS C2")
+        
 
 #DM Project: K-core decomposition
 #-----------------------------------------------------------------------------#
@@ -627,7 +715,6 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT,index_ty
                     thr = thr[0]
                 else:
                     thr = 0
-    
                 if thr <= err1:
                     print "Performing SO with EigenVector " + str(j)
                     # Get corresponding eigenvector
